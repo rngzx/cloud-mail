@@ -70,7 +70,7 @@ jobs:
         run: wrangler telemetry disable
 
       # =========================
-      # Env setup
+      # Env setup (修复 R2_BUCKET_NAME 未替换的问题)
       # =========================
       - name: 🛠️ Environment setup
         working-directory: ./mail-worker
@@ -81,10 +81,17 @@ jobs:
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then exit 1; fi
 
           CONFIG_FILE="wrangler-action.toml"
+          
+          # 设定安全的 R2 Bucket 名字 (全小写)
+          ACTUAL_R2_NAME="${R2_BUCKET_NAME:-cloud-mail-r2}"
 
           sed -i "s|\${NAME}|${NAME}|g" "$CONFIG_FILE"
           sed -i "s|\${ADMIN}|${ADMIN}|g" "$CONFIG_FILE"
           sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
+          sed -i "s|\${R2_BUCKET_NAME}|$ACTUAL_R2_NAME|g" "$CONFIG_FILE"
+          
+          # 存入 GitHub 环境变量供下一步自动创建使用
+          echo "ACTUAL_R2_NAME=$ACTUAL_R2_NAME" >> $GITHUB_ENV
 
       # =========================
       # KV
@@ -133,6 +140,16 @@ jobs:
           sed -i "s|\${D1_DATABASE_ID}|$DB_ID|g" wrangler-action.toml
 
       # =========================
+      # R2 setup (新增：自动帮你建好存储桶)
+      # =========================
+      - name: 🪣 R2 setup
+        working-directory: ./mail-worker
+        run: |
+          echo "Attempting to create R2 bucket: $ACTUAL_R2_NAME"
+          # || true 的作用是：如果这个名字的桶已经存在，也不会报错中断流程
+          wrangler r2 bucket create "$ACTUAL_R2_NAME" || true
+
+      # =========================
       # Deploy
       # =========================
       - name: 🚀 Deploy Worker
@@ -141,7 +158,6 @@ jobs:
         run: |
           echo "Starting Wrangler deployment..."
           
-          # 将报错彻底暴露出来的写法
           if ! wrangler deploy -c wrangler-action.toml > deploy_log.txt 2>&1; then
             cat deploy_log.txt
             echo "❌ Deployment failed! Check the errors above."
