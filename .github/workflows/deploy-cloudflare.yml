@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
 
       # =========================
-      # Node 24 统一（关键升级）
+      # Node 24（统一运行环境）
       # =========================
       - name: ⚙️ Setup Node.js 24
         uses: actions/setup-node@v4
@@ -48,17 +48,23 @@ jobs:
           cache-dependency-path: mail-worker/pnpm-lock.yaml
 
       # =========================
-      # pnpm 官方推荐方式
+      # pnpm（强制稳定安装方式）
       # =========================
-      - name: 📦 Enable Corepack (pnpm)
-        run: corepack enable
+      - name: 📦 Install pnpm
+        run: npm install -g pnpm@9
 
+      - name: 📦 Verify pnpm
+        run: pnpm -v
+
+      # =========================
+      # Install dependencies
+      # =========================
       - name: 📦 Install dependencies
         working-directory: ./mail-worker
         run: pnpm install --frozen-lockfile
 
       # =========================
-      # 固定 wrangler 版本（稳定性关键）
+      # Wrangler（固定版本，避免breaking change）
       # =========================
       - name: ⚙️ Install Wrangler
         working-directory: ./mail-worker
@@ -69,7 +75,7 @@ jobs:
         run: wrangler telemetry disable
 
       # =========================
-      # Env setup（保留你的逻辑）
+      # Environment setup
       # =========================
       - name: 🛠️ Environment setup
         working-directory: ./mail-worker
@@ -105,7 +111,7 @@ jobs:
           echo "✅ Environment ready"
 
       # =========================
-      # KV（简化但保留自动创建）
+      # KV setup
       # =========================
       - name: ⚡ KV setup
         working-directory: ./mail-worker
@@ -121,7 +127,7 @@ jobs:
           sed -i "s|\${KV_NAMESPACE_ID}|$KV_ID|g" wrangler-action.toml
 
       # =========================
-      # D1（同样简化）
+      # D1 setup
       # =========================
       - name: 🐬 D1 setup
         working-directory: ./mail-worker
@@ -135,7 +141,7 @@ jobs:
           sed -i "s|\${D1_DATABASE_ID}|$DB_ID|g" wrangler-action.toml
 
       # =========================
-      # Deploy（更稳解析）
+      # Deploy
       # =========================
       - name: 🚀 Deploy Worker
         id: deploy
@@ -143,7 +149,7 @@ jobs:
         run: |
           set -e
 
-          echo "Deploying..."
+          echo "Deploying Worker..."
 
           OUTPUT=$(wrangler deploy -c wrangler-action.toml 2>&1)
           echo "$OUTPUT"
