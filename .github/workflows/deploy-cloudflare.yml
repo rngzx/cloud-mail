@@ -38,22 +38,18 @@ jobs:
         uses: actions/checkout@v4
 
       # =========================
-      # 📦 Setup pnpm (必须在 Setup Node 之前)
-      # =========================
-      - name: 📦 Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.12.0
-
-      # =========================
-      # ⚙️ Setup Node.js 24
+      # ⚙️ Setup Node.js 24 (去掉 cache 参数，防止内部报错)
       # =========================
       - name: ⚙️ Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: mail-worker/pnpm-lock.yaml
+
+      # =========================
+      # 📦 最稳定的 pnpm 安装方式 (直接用 npm 全局安装)
+      # =========================
+      - name: 📦 Install pnpm
+        run: npm install -g pnpm@9.12.0
 
       # =========================
       # Install deps
