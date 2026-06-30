@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
 
       # =========================
-      # Node 24（统一运行环境）
+      # Node 24
       # =========================
       - name: ⚙️ Setup Node.js 24
         uses: actions/setup-node@v4
@@ -48,23 +48,35 @@ jobs:
           cache-dependency-path: mail-worker/pnpm-lock.yaml
 
       # =========================
-      # pnpm（稳定核心方案）
+      # 🔥 FIX: pnpm 终极稳定方案
       # =========================
-      - name: 📦 Enable Corepack + pnpm
+      - name: 📦 Setup pnpm (FIXED)
         run: |
+          echo "Node version:"
+          node -v
+
+          echo "Enable corepack..."
           corepack enable
+
+          echo "Prepare pnpm explicitly..."
           corepack prepare pnpm@9.12.0 --activate
+
+          echo "Fix PATH for GitHub Actions..."
+          export PATH="$(dirname $(which node))/../bin:$PATH"
+
+          echo "pnpm check:"
+          which pnpm || true
           pnpm -v
 
       # =========================
-      # Install dependencies
+      # Install deps
       # =========================
       - name: 📦 Install dependencies
         working-directory: ./mail-worker
         run: pnpm install --frozen-lockfile
 
       # =========================
-      # Wrangler（固定版本）
+      # Wrangler
       # =========================
       - name: ⚙️ Install Wrangler
         working-directory: ./mail-worker
@@ -75,13 +87,11 @@ jobs:
         run: wrangler telemetry disable
 
       # =========================
-      # Environment setup
+      # Env setup
       # =========================
       - name: 🛠️ Environment setup
         working-directory: ./mail-worker
         run: |
-          echo "🔐 Setting up environment..."
-
           if [ -z "$JWT_SECRET" ]; then exit 1; fi
           if [ -z "$ADMIN" ]; then exit 1; fi
           if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then exit 1; fi
@@ -94,7 +104,7 @@ jobs:
           sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
 
       # =========================
-      # KV setup
+      # KV
       # =========================
       - name: ⚡ KV setup
         working-directory: ./mail-worker
@@ -108,7 +118,7 @@ jobs:
           sed -i "s|\${KV_NAMESPACE_ID}|$KV_ID|g" wrangler-action.toml
 
       # =========================
-      # D1 setup
+      # D1
       # =========================
       - name: 🐬 D1 setup
         working-directory: ./mail-worker
