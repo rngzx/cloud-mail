@@ -59,7 +59,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # =========================
-      # Wrangler (改为用 npm 安装)
+      # Wrangler
       # =========================
       - name: ⚙️ Install Wrangler
         working-directory: ./mail-worker
@@ -97,9 +97,9 @@ jobs:
             exit 0
           fi
 
-          # 绕过被废弃的 --json 参数，直接用正则提取文本中的 ID
+          # 绕过被废弃的 --json 参数，直接用纯文本正则提取 ID
           OUTPUT=$(wrangler kv namespace create $NAME)
-          echo "Wrangler Output: $OUTPUT"
+          echo "KV Output: $OUTPUT"
           
           KV_ID=$(echo "$OUTPUT" | grep -oE 'id\s*=\s*"[^"]+"' | head -n 1 | cut -d '"' -f 2)
           
@@ -121,7 +121,17 @@ jobs:
             exit 0
           fi
 
-          DB_ID=$(wrangler d1 create $NAME --json | jq -r '.uuid')
+          # 同样绕过 D1 的 --json 参数，直接用纯文本和正则提取 UUID
+          OUTPUT=$(wrangler d1 create $NAME)
+          echo "D1 Output: $OUTPUT"
+          
+          DB_ID=$(echo "$OUTPUT" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' | head -n 1)
+          
+          if [ -z "$DB_ID" ]; then
+            echo "❌ Failed to extract D1_DATABASE_ID"
+            exit 1
+          fi
+          
           sed -i "s|\${D1_DATABASE_ID}|$DB_ID|g" wrangler-action.toml
 
       # =========================
