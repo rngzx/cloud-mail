@@ -48,13 +48,13 @@ jobs:
           cache-dependency-path: mail-worker/pnpm-lock.yaml
 
       # =========================
-      # pnpm（强制稳定安装方式）
+      # pnpm（稳定核心方案）
       # =========================
-      - name: 📦 Install pnpm
-        run: npm install -g pnpm@9
-
-      - name: 📦 Verify pnpm
-        run: pnpm -v
+      - name: 📦 Enable Corepack + pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+          pnpm -v
 
       # =========================
       # Install dependencies
@@ -64,11 +64,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # =========================
-      # Wrangler（固定版本，避免breaking change）
+      # Wrangler（固定版本）
       # =========================
       - name: ⚙️ Install Wrangler
         working-directory: ./mail-worker
-        run: pnpm add -g wrangler@4
+        run: pnpm add -g wrangler@4.90.0
 
       - name: 📡 Disable telemetry
         working-directory: ./mail-worker
@@ -82,33 +82,16 @@ jobs:
         run: |
           echo "🔐 Setting up environment..."
 
-          if [ -z "$JWT_SECRET" ]; then
-            echo "❌ JWT_SECRET missing"
-            exit 1
-          fi
-
-          if [ -z "$ADMIN" ]; then
-            echo "❌ ADMIN missing"
-            exit 1
-          fi
-
-          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "❌ CLOUDFLARE_ACCOUNT_ID missing"
-            exit 1
-          fi
-
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "❌ CLOUDFLARE_API_TOKEN missing"
-            exit 1
-          fi
+          if [ -z "$JWT_SECRET" ]; then exit 1; fi
+          if [ -z "$ADMIN" ]; then exit 1; fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then exit 1; fi
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then exit 1; fi
 
           CONFIG_FILE="wrangler-action.toml"
 
           sed -i "s|\${NAME}|${NAME}|g" "$CONFIG_FILE"
           sed -i "s|\${ADMIN}|${ADMIN}|g" "$CONFIG_FILE"
           sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
-
-          echo "✅ Environment ready"
 
       # =========================
       # KV setup
@@ -117,12 +100,10 @@ jobs:
         working-directory: ./mail-worker
         run: |
           if [ -n "$KV_NAMESPACE_ID" ]; then
-            echo "Using existing KV"
             sed -i "s|\${KV_NAMESPACE_ID}|${KV_NAMESPACE_ID}|g" wrangler-action.toml
             exit 0
           fi
 
-          echo "Creating KV..."
           KV_ID=$(wrangler kv namespace create $NAME --json | jq -r '.id')
           sed -i "s|\${KV_NAMESPACE_ID}|$KV_ID|g" wrangler-action.toml
 
@@ -148,8 +129,6 @@ jobs:
         working-directory: ./mail-worker
         run: |
           set -e
-
-          echo "Deploying Worker..."
 
           OUTPUT=$(wrangler deploy -c wrangler-action.toml 2>&1)
           echo "$OUTPUT"
