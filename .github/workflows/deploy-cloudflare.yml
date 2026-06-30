@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
 
       # =========================
-      # ⚙️ Setup Node.js 24 (去掉 cache 参数，防止内部报错)
+      # ⚙️ Setup Node.js 24 (去掉 cache 参数)
       # =========================
       - name: ⚙️ Setup Node.js 24
         uses: actions/setup-node@v4
@@ -46,7 +46,7 @@ jobs:
           node-version: 24
 
       # =========================
-      # 📦 最稳定的 pnpm 安装方式 (直接用 npm 全局安装)
+      # 📦 最稳定的 pnpm 安装方式
       # =========================
       - name: 📦 Install pnpm
         run: npm install -g pnpm@9.12.0
@@ -59,11 +59,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # =========================
-      # Wrangler
+      # Wrangler (改为用 npm 安装)
       # =========================
       - name: ⚙️ Install Wrangler
         working-directory: ./mail-worker
-        run: pnpm add -g wrangler@4.90.0
+        run: npm install -g wrangler@4.90.0
 
       - name: 📡 Disable telemetry
         working-directory: ./mail-worker
