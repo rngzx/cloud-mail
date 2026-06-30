@@ -97,7 +97,6 @@ jobs:
             exit 0
           fi
 
-          # 绕过被废弃的 --json 参数，直接用纯文本正则提取 ID
           OUTPUT=$(wrangler kv namespace create $NAME)
           echo "KV Output: $OUTPUT"
           
@@ -121,7 +120,6 @@ jobs:
             exit 0
           fi
 
-          # 同样绕过 D1 的 --json 参数，直接用纯文本和正则提取 UUID
           OUTPUT=$(wrangler d1 create $NAME)
           echo "D1 Output: $OUTPUT"
           
@@ -141,13 +139,17 @@ jobs:
         id: deploy
         working-directory: ./mail-worker
         run: |
-          set -e
-
-          OUTPUT=$(wrangler deploy -c wrangler-action.toml 2>&1)
-          echo "$OUTPUT"
-
-          WORKER_URL=$(echo "$OUTPUT" | grep -Eo "https://[a-zA-Z0-9.-]+\.workers\.dev" | head -n 1)
-
+          echo "Starting Wrangler deployment..."
+          
+          # 将报错彻底暴露出来的写法
+          if ! wrangler deploy -c wrangler-action.toml > deploy_log.txt 2>&1; then
+            cat deploy_log.txt
+            echo "❌ Deployment failed! Check the errors above."
+            exit 1
+          fi
+          
+          cat deploy_log.txt
+          WORKER_URL=$(grep -Eo "https://[a-zA-Z0-9.-]+\.workers\.dev" deploy_log.txt | head -n 1)
           echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
 
       # =========================
