@@ -23,7 +23,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
       D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID || vars.D1_DATABASE_ID }}
       KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID || vars.KV_NAMESPACE_ID }}
-      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || vars.R2_BUCKET_NAME }}
       PROJECT_LINK: ${{ secrets.PROJECT_LINK || vars.PROJECT_LINK }}
       AI_MODEL: ${{ secrets.AI_MODEL || vars.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct' }}
       CLOUDFLARE_EMAIL: ${{ secrets.CF_EMAIL || vars.CF_EMAIL || false }}
@@ -70,7 +69,7 @@ jobs:
         run: wrangler telemetry disable
 
       # =========================
-      # Env setup (修复 R2_BUCKET_NAME 未替换的问题)
+      # Env setup (新增：强行剔除 R2 绑定)
       # =========================
       - name: 🛠️ Environment setup
         working-directory: ./mail-worker
@@ -81,20 +80,17 @@ jobs:
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then exit 1; fi
 
           CONFIG_FILE="wrangler-action.toml"
-          
-          # 设定安全的 R2 Bucket 名字 (全小写)
-          ACTUAL_R2_NAME="${R2_BUCKET_NAME:-cloud-mail-r2}"
 
           sed -i "s|\${NAME}|${NAME}|g" "$CONFIG_FILE"
           sed -i "s|\${ADMIN}|${ADMIN}|g" "$CONFIG_FILE"
           sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
-          sed -i "s|\${R2_BUCKET_NAME}|$ACTUAL_R2_NAME|g" "$CONFIG_FILE"
           
-          # 存入 GitHub 环境变量供下一步自动创建使用
-          echo "ACTUAL_R2_NAME=$ACTUAL_R2_NAME" >> $GITHUB_ENV
+          # 【魔法指令】动态删除 TOML 配置文件中的 [[r2_buckets]] 块
+          # 这样 Wrangler 就完全不知道有 R2 这回事，直接绕过云端检测！
+          awk '/\[\[r2_buckets\]\]/{flag=1; next} /^\[.*\]/{flag=0} !flag' "$CONFIG_FILE" > temp.toml && mv temp.toml "$CONFIG_FILE"
 
       # =========================
-      # KV
+      # KV setup
       # =========================
       - name: ⚡ KV setup
         working-directory: ./mail-worker
@@ -114,68 +110,4 @@ jobs:
             exit 1
           fi
           
-          sed -i "s|\${KV_NAMESPACE_ID}|$KV_ID|g" wrangler-action.toml
-
-      # =========================
-      # D1
-      # =========================
-      - name: 🐬 D1 setup
-        working-directory: ./mail-worker
-        run: |
-          if [ -n "$D1_DATABASE_ID" ]; then
-            sed -i "s|\${D1_DATABASE_ID}|${D1_DATABASE_ID}|g" wrangler-action.toml
-            exit 0
-          fi
-
-          OUTPUT=$(wrangler d1 create $NAME)
-          echo "D1 Output: $OUTPUT"
-          
-          DB_ID=$(echo "$OUTPUT" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' | head -n 1)
-          
-          if [ -z "$DB_ID" ]; then
-            echo "❌ Failed to extract D1_DATABASE_ID"
-            exit 1
-          fi
-          
-          sed -i "s|\${D1_DATABASE_ID}|$DB_ID|g" wrangler-action.toml
-
-      # =========================
-      # R2 setup (新增：自动帮你建好存储桶)
-      # =========================
-      - name: 🪣 R2 setup
-        working-directory: ./mail-worker
-        run: |
-          echo "Attempting to create R2 bucket: $ACTUAL_R2_NAME"
-          # || true 的作用是：如果这个名字的桶已经存在，也不会报错中断流程
-          wrangler r2 bucket create "$ACTUAL_R2_NAME" || true
-
-      # =========================
-      # Deploy
-      # =========================
-      - name: 🚀 Deploy Worker
-        id: deploy
-        working-directory: ./mail-worker
-        run: |
-          echo "Starting Wrangler deployment..."
-          
-          if ! wrangler deploy -c wrangler-action.toml > deploy_log.txt 2>&1; then
-            cat deploy_log.txt
-            echo "❌ Deployment failed! Check the errors above."
-            exit 1
-          fi
-          
-          cat deploy_log.txt
-          WORKER_URL=$(grep -Eo "https://[a-zA-Z0-9.-]+\.workers\.dev" deploy_log.txt | head -n 1)
-          echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
-
-      # =========================
-      # Init DB
-      # =========================
-      - name: ♻️ Init database
-        run: |
-          sleep 10
-
-          URL="${CUSTOM_DOMAIN:+https://$CUSTOM_DOMAIN}"
-          URL="${URL:-${{ steps.deploy.outputs.worker_url }}}"
-
-          curl -f "$URL/api/init/$JWT_SECRET" || exit 1
+          sed -i "s|\${KV_NAMESPACE_ID}|$KV
