@@ -69,7 +69,7 @@ jobs:
         run: wrangler telemetry disable
 
       # =========================
-      # Env setup (新增：强行剔除 R2 绑定)
+      # Env setup (强行剔除 R2 绑定)
       # =========================
       - name: 🛠️ Environment setup
         working-directory: ./mail-worker
@@ -86,11 +86,10 @@ jobs:
           sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
           
           # 【魔法指令】动态删除 TOML 配置文件中的 [[r2_buckets]] 块
-          # 这样 Wrangler 就完全不知道有 R2 这回事，直接绕过云端检测！
           awk '/\[\[r2_buckets\]\]/{flag=1; next} /^\[.*\]/{flag=0} !flag' "$CONFIG_FILE" > temp.toml && mv temp.toml "$CONFIG_FILE"
 
       # =========================
-      # KV setup
+      # KV setup (全双引号写法，杜绝语法错误)
       # =========================
       - name: ⚡ KV setup
         working-directory: ./mail-worker
@@ -103,11 +102,65 @@ jobs:
           OUTPUT=$(wrangler kv namespace create $NAME)
           echo "KV Output: $OUTPUT"
           
-          KV_ID=$(echo "$OUTPUT" | grep -oE 'id\s*=\s*"[^"]+"' | head -n 1 | cut -d '"' -f 2)
+          KV_ID=$(echo "$OUTPUT" | grep -oE "id\s*=\s*\"[^\"]+\"" | head -n 1 | cut -d \" -f 2)
           
           if [ -z "$KV_ID" ]; then
             echo "❌ Failed to extract KV_ID"
             exit 1
           fi
           
-          sed -i "s|\${KV_NAMESPACE_ID}|$KV
+          sed -i "s|\${KV_NAMESPACE_ID}|$KV_ID|g" wrangler-action.toml
+
+      # =========================
+      # D1 setup (全双引号写法，杜绝语法错误)
+      # =========================
+      - name: 🐬 D1 setup
+        working-directory: ./mail-worker
+        run: |
+          if [ -n "$D1_DATABASE_ID" ]; then
+            sed -i "s|\${D1_DATABASE_ID}|${D1_DATABASE_ID}|g" wrangler-action.toml
+            exit 0
+          fi
+
+          OUTPUT=$(wrangler d1 create $NAME)
+          echo "D1 Output: $OUTPUT"
+          
+          DB_ID=$(echo "$OUTPUT" | grep -oE "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" | head -n 1)
+          
+          if [ -z "$DB_ID" ]; then
+            echo "❌ Failed to extract D1_DATABASE_ID"
+            exit 1
+          fi
+          
+          sed -i "s|\${D1_DATABASE_ID}|$DB_ID|g" wrangler-action.toml
+
+      # =========================
+      # Deploy
+      # =========================
+      - name: 🚀 Deploy Worker
+        id: deploy
+        working-directory: ./mail-worker
+        run: |
+          echo "Starting Wrangler deployment..."
+          
+          if ! wrangler deploy -c wrangler-action.toml > deploy_log.txt 2>&1; then
+            cat deploy_log.txt
+            echo "❌ Deployment failed! Check the errors above."
+            exit 1
+          fi
+          
+          cat deploy_log.txt
+          WORKER_URL=$(grep -Eo "https://[a-zA-Z0-9.-]+\.workers\.dev" deploy_log.txt | head -n 1)
+          echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
+
+      # =========================
+      # Init DB
+      # =========================
+      - name: ♻️ Init database
+        run: |
+          sleep 10
+
+          URL="${CUSTOM_DOMAIN:+https://$CUSTOM_DOMAIN}"
+          URL="${URL:-${{ steps.deploy.outputs.worker_url }}}"
+
+          curl -f "$URL/api/init/$JWT_SECRET" || exit 1
